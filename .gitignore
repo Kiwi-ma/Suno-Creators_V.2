@@ -1,0 +1,30 @@
+# Fichiers et dossiers à ignorer pour le projet Suno-Creators
+
+# --- Environnement virtuel ---
+.venv/
+venv/
+env/
+*.pyenv
+
+# --- Fichiers de configuration et secrets (CRUCIAL pour la sécurité !) ---
+.streamlit/secrets.toml
+
+# --- Fichiers Python générés/compilés ---
+__pycache__/
+*.pyc
+*.pyd
+*.so
+
+# --- Fichiers générés localement par l'application ---
+# Les paroles générées sont des sorties locales et ne devraient pas être versionnées.
+assets/texts_generated/
+
+# --- Fichiers spécifiques au système d'exploitation ---
+.DS_Store          # macOS
+Thumbs.db          # Windows
+.vscode/           # Dossier de configuration VS Code (optionnel, si tu l'utilises et ne veux pas le versionner)
+
+# --- Fichiers de log ou de données temporaires (si tu en crées) ---
+*.log
+*.tmp
+*.bak
