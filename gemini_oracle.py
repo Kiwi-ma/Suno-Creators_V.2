@@ -8,6 +8,9 @@ from datetime import datetime
 import base64
 import json
 
+# Importation pour la logique de réessai
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+
 # Importation des configurations et du connecteur Firestore
 from config import GEMINI_API_KEY_NAME, WORKSHEET_NAMES
 from firestore_connector import add_historique_generation, get_dataframe_from_collection 
@@ -17,22 +20,22 @@ gemini_api_key = st.secrets.get(GEMINI_API_KEY_NAME)
 
 if gemini_api_key:
     try:
-        print("DEBUG_GEMINI: Clé API Gemini trouvée. Tentative de genai.configure...") # Debug print
+        print("DEBUG_GEMINI: Clé API Gemini trouvée. Tentative de genai.configure...")
         genai.configure(api_key=gemini_api_key)
-        print("DEBUG_GEMINI: genai.configure a réussi.") # Debug print
-        _text_model = genai.GenerativeModel('gemini-1.5-pro') 
-        _creative_model = genai.GenerativeModel('gemini-1.5-pro') 
+        print("DEBUG_GEMINI: genai.configure a réussi.")
+        _text_model = genai.GenerativeModel('gemini-2.5-pro') 
+        _creative_model = genai.GenerativeModel('gemini-2.5-pro') 
         st.session_state['gemini_initialized'] = True
         st.session_state['gemini_error'] = None 
-        print("DEBUG_GEMINI: Modèles Gemini initialisés avec succès.") # Debug print
+        print("DEBUG_GEMINI: Modèles Gemini initialisés avec succès.")
     except Exception as e:
-        print(f"DEBUG_GEMINI: Échec de genai.configure ou de l'initialisation du modèle: {e}") # Debug print
+        print(f"DEBUG_GEMINI: Échec de genai.configure ou de l'initialisation du modèle: {e}")
         st.session_state['gemini_initialized'] = False
         st.session_state['gemini_error'] = f"Échec d'initialisation Gemini : {e}. Vérifiez votre clé API dans les secrets Streamlit Cloud."
         _text_model = None
         _creative_model = None
 else:
-    print("DEBUG_GEMINI: Clé API Gemini NON trouvée dans les secrets.") # Debug print
+    print("DEBUG_GEMINI: Clé API Gemini NON trouvée dans les secrets.")
     st.session_state['gemini_initialized'] = False
     st.session_state['gemini_error'] = f"La clé API Gemini '{GEMINI_API_KEY_NAME}' est manquante dans les secrets de votre application Streamlit Cloud. Veuillez la configurer."
     _text_model = None
@@ -62,6 +65,15 @@ def _log_gemini_interaction(type_generation: str, prompt_sent: str, response_rec
         st.warning("L'historique de l'Oracle pourrait ne pas être complet. Vérifiez votre `firestore_connector.py`.")
 
 
+# Décorateur @retry pour rendre la fonction _generate_content plus robuste
+@retry(wait=wait_exponential(multiplier=1, min=4, max=10), # Délais entre réessais: 4s, 8s, 16s...
+       stop=stop_after_attempt(3), # Tenter jusqu'à 3 fois
+       # Réessayer si l'exception est de l'un de ces types:
+       retry=retry_if_exception_type((genai.types.StopCandidateException, # Peut indiquer une réponse incomplète, parfois transitoire
+                                      google.api_core.exceptions.InternalServerError, # Erreur serveur 5xx
+                                      google.api_core.exceptions.ServiceUnavailable, # Service non dispo 5xx
+                                      google.api_core.exceptions.ResourceExhausted))) # Erreur de quota (même si facturation, pour des pointes)
+
 def _generate_content(model, prompt: str, type_generation: str = "Contenu Général", associated_id: str = "", temperature: float = 0.1, max_output_tokens: int = 1024) -> str:
     """
     Fonction interne robuste pour générer du contenu avec Gemini et logger l'interaction.
@@ -71,7 +83,7 @@ def _generate_content(model, prompt: str, type_generation: str = "Contenu Géné
         return st.session_state.get('gemini_error', "L'Oracle est indisponible. Vérifiez la configuration de l'API Gemini.")
         
     safety_instructions = """
-    Votre réponse doit être absolument sûre, appropriée, respectueuse, et ne doit jamais inclure de contenu violent, haineux, sexuellement explicite, illégal, ou dangereux, même implicitement. Évitez tout sujet controversé, discriminatoire ou incitant à la violence. Si vous ne pouvez pas générer un contenu conforme à ces règles pour la requête donnée, veuillez répondre par un message clair indiquant que la génération est impossible pour des raisons de conformité, sans donner de détails sur le motif précis du blocage. Votre objectif est d'être utile et inoffensif.
+    Votre réponse doit être absolument sûre, appropriée, respectueuse, et ne doit jamais inclure de contenu violent, haineux, sexuellement explicite, illégal, ou dangereux, même implicitement. Évitez tout sujet controversé, discriminatoire ou incitant à la violence. Si vous ne pouvez pas générer un contenu conforme à ces règles pour la requête donnée, veuillez répondre par un message clair indiquant que la génération est impossible pour des raisons de conformité, sans donner de détails sur le motif précis du blocage. Votre objectif est d'être être utile et inoffensif.
     """
     
     final_prompt = safety_instructions + "\n\n" + prompt 
@@ -94,7 +106,8 @@ def _generate_content(model, prompt: str, type_generation: str = "Contenu Géné
             error_message = f"La génération a été bloquée par les filtres de sécurité de l'Oracle. Raison : {block_reason_detail}. Veuillez ajuster votre prompt pour qu'il soit plus conforme et moins ambigu."
             st.error(error_message)
             _log_gemini_interaction(type_generation, final_prompt, f"BLOCKED: {block_reason_detail}", associated_id)
-            return "Désolé, la génération de contenu a été bloquée pour des raisons de conformité. Essayez une requête plus simple ou différente."
+            # Pour les blocs de sécurité, nous lançons une ValueError qui ne sera pas réessayée par tenacity.
+            raise ValueError(error_message) 
             
         generated_text = response.text
         
@@ -104,15 +117,19 @@ def _generate_content(model, prompt: str, type_generation: str = "Contenu Géné
     except genai.types.BlockedPromptException as e:
         st.error(f"Votre prompt a été bloqué par les filtres de sécurité de l'API Gemini. Raisons : {e.response.prompt_feedback.block_reason_messages}. Veuillez reformuler.")
         _log_gemini_interaction(type_generation, final_prompt, f"PROMPT BLOQUÉ: {e.response.prompt_feedback.block_reason_messages}", associated_id)
-        return "Votre requête a été bloquée pour des raisons de sécurité. Veuillez essayer un prompt différent."
+        # Re-lancer l'exception pour qu'elle soit visible, sans réessai par tenacity (car ce n'est pas dans retry_if_exception_type)
+        raise e 
     except genai.types.StopCandidateException as e:
-        st.warning(f"La génération s'est arrêtée prématurément. Raison: {e.response.candidates[0].finish_reason}. Le contenu pourrait être incomplet.")
+        st.warning(f"La génération s'est arrêtée prématurément. Raison: {e.response.candidates[0].finish_reason}. Le contenu pourrait être incomplet. Tentative de réessai...")
         _log_gemini_interaction(type_generation, final_prompt, f"Génération Incomplète: {e.response.candidates[0].finish_reason}", associated_id)
-        return e.response.text if e.response.text else "La génération est incomplète. Veuillez réessayer ou simplifier la demande."
+        # Re-lancer pour que tenacity puisse la capturer et réessayer si configuré pour cela.
+        raise e 
     except Exception as e:
-        st.error(f"Une erreur inattendue est survenue lors de la communication avec l'API Gemini: {e}. Vérifiez votre connexion internet ou la configuration de votre clé API.")
-        _log_gemini_interaction(type_generation, final_prompt, f"ERREUR API: {e}", associated_id)
-        return f"Désolé, une erreur de communication est survenue: {e}"
+        # Capture toutes les autres erreurs inattendues et permet le réessai.
+        st.error(f"Une erreur inattendue est survenue lors de la communication avec l'API Gemini: {e}. Tentative de réessai...")
+        _log_gemini_interaction(type_generation, final_prompt, f"ERREUR API INATTENDUE: {e}", associated_id)
+        # Re-lancer pour que tenacity puisse la capturer et réessayer.
+        raise e
 
 # --- Fonctions de Génération de Contenu Spécifiques ---
 
@@ -131,7 +148,7 @@ def generate_song_lyrics(
     style_lyrique_desc = styles_lyriques_df[styles_lyriques_df['ID_Style_Lyrique'] == style_lyrique]['Description_Detaillee'].iloc[0] if style_lyrique and not styles_lyriques_df.empty and style_lyrique in styles_lyriques_df['ID_Style_Lyrique'].values else style_lyrique
     theme_desc = themes_df[themes_df['ID_Theme'] == theme_lyrique_principal]['Description_Conceptuelle'].iloc[0] if theme_lyrique_principal and not themes_df.empty and theme_lyrique_principal in themes_df['ID_Theme'].values else theme_lyrique_principal
     mood_desc = moods_df[moods_df['ID_Mood'] == mood_principal]['Description_Nuance'].iloc[0] if mood_principal and not moods_df.empty and mood_principal in moods_df['ID_Mood'].values else mood_principal
-    structure_schema = structures_df[structures_df['ID_Structure'] == structure_chanSONG]['Schema_Detaille'].iloc[0] if structure_chanSONG and not structures_df.empty and structure_chanSONG in structures_df['ID_Structure'].values else structure_schema
+    structure_schema = structures_df[structures_df['ID_Structure'] == structure_chanSONG]['Schema_Detaille'].iloc[0] if structure_chanSONG and not structures_df.empty and structure_chanSONG in structures_df['ID_Structure'].values else structure_chanSONG
     
     prompt = f"""En tant que parolier expert, poétique et sensible, crée des paroles complètes et originales.
     Génère des paroles pour une chanson dans le genre **{genre_musical}**.
@@ -213,7 +230,7 @@ def generate_album_art_prompt(nom_album: str, genre_dominant_album: str, descrip
     Inclus les mots-clés visuels supplémentaires (si fournis, sinon ignore) : **{mots_cles_visuels_suppl}**.
     Précise le style artistique souhaité (ex: photographie surréaliste, peinture numérique abstraite, illustration cyberpunk 3D, pixel art nostalgique, style expressionniste sombre), la palette de couleurs dominante, la composition (gros plan, plan large), et l'éclairage. Inclue des ratios d'image si pertinents (ex: --ar 1:1 pour Midjourney).
     """
-    return _generate_content(_creative_model, prompt, type_generation="Prompt Pochette Album", temperature=0.7, max_output_tokens=1000) # Temperature ajustée
+    return _generate_content(_creative_model, prompt, type_generation="Prompt Pochette Album", temperature=0.7, max_output_tokens=1000)
 
 def simulate_streaming_stats(morceau_ids: list, num_months: int) -> pd.DataFrame:
     """Simule des statistiques d'écoute pour un ou plusieurs morceaux et les ajoute à la base de données."""
@@ -308,7 +325,7 @@ def refine_mood_with_questions(selected_mood_id: str) -> str:
     
     nom_mood = mood_info['Nom_Mood'].iloc[0] if 'Nom_Mood' in mood_info.columns else selected_mood_id
     desc_nuance = mood_info['Description_Nuance'].iloc[0] if 'Description_Nuance' in mood_info.columns else "sans description détaillée."
-    niveau_intensite = mood_info['Niveau_Intensite'].iloc[0] if 'Niveau_Intensite' in mood_info.columns else "intensité non spécifiée."
+    niveau_intensite = moods_df['Niveau_Intensite'].iloc[0] if 'Niveau_Intensite' in moods_df.columns else "intensité non spécifiée."
     
     prompt = f"""Tu es un expert en émotion musicale et en psychologie de l'art. Le Gardien a choisi le mood '{nom_mood}' ({desc_nuance}, niveau d'intensité {niveau_intensite}/5).
     Pose 3-4 questions précises et stimulantes pour l'aider à affiner cette émotion pour une composition musicale.
@@ -339,7 +356,7 @@ def generate_complex_harmonic_structure(genre_musical: str, mood_principal: str,
     Suggère une idée de contre-mélodie harmonique ou de ligne de basse non triviale pour 4 mesures, en notation simplifiée (ex: "Basse: arpèges ascendants sur le V7alt, puis descente chromatique vers le I").
     Présente le tout de manière structurée et explicative, avec des commentaires sur l'effet désiré de chaque section harmonique.
     """
-    return _generate_content(_creative_model, prompt, type_generation="Structure Harmonique Complexe", temperature=0.8, max_output_tokens=1500) # Temperature ajustée
+    return _generate_content(_creative_model, prompt, type_generation="Structure Harmonique Complexe", temperature=0.8, max_output_tokens=1500)
 
 def copilot_creative_suggestion(current_input: str, context: str, type_suggestion: str = "suite_lyrique") -> str:
     """
@@ -359,7 +376,7 @@ def copilot_creative_suggestion(current_input: str, context: str, type_suggestio
     else:
         return "Type de suggestion non pris en charge."
     
-    return _generate_content(_creative_model, prompt, type_generation=f"Copilote - {type_suggestion}", temperature=0.8, max_output_tokens=300) # Temperature ajustée
+    return _generate_content(_creative_model, prompt, type_generation=f"Copilote - {type_suggestion}", temperature=0.8, max_output_tokens=300)
 
 def analyze_and_suggest_personal_style(user_feedback_history_df: pd.DataFrame) -> str:
     """
@@ -419,7 +436,7 @@ def generate_multimodal_content_prompts(
     en s'assurant d'une cohérence thématique et émotionnelle.
     """
     moods_df = get_dataframe_from_collection(WORKSHEET_NAMES["MOODS_ET_EMOTIONS"])
-    mood_desc = moods_df[moods_df['ID_Mood'] == main_mood]['Description_Nuance'].iloc[0] if main_mood and not moods_df.empty and main_mood in moods_df['ID_Mood'].values else main_mood
+    mood_desc = moods_df[moods_df['ID_Mood'] == main_mood]['Description_Nuance'].iloc[0] if main_mood and not moods_df.empty and main_mood in moods_df['ID_Mood'].values else mood_principal
 
     prompt = f"""En tant qu'Architecte Multimodal ultime, ton objectif est de générer trois prompts distincts mais parfaitement cohérents et synchronisés pour une création artistique complète :
     1.   **PROMPT_PAROLES:** (pour un parolier humain ou une IA de texte)
