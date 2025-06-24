@@ -19,8 +19,8 @@ gemini_api_key = st.secrets.get(GEMINI_API_KEY_NAME)
 if gemini_api_key:
     try:
         genai.configure(api_key=gemini_api_key)
-        _text_model = genai.GenerativeModel('gemini-2.5-flash') 
-        _creative_model = genai.GenerativeModel('gemini-2.5-flash') 
+        _text_model = genai.GenerativeModel('gemini-1.5-pro') 
+        _creative_model = genai.GenerativeModel('gemini-1.5-pro') 
         st.session_state['gemini_initialized'] = True
         st.session_state['gemini_error'] = None 
     except Exception as e:
