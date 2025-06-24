@@ -9,7 +9,6 @@ import base64
 import json
 
 # Importation des configurations et du connecteur Firestore
-# CORRECTION ICI : WORKSHEET_NAMES au lieu de FIRESTORE_COLLECTIONS
 from config import GEMINI_API_KEY_NAME, WORKSHEET_NAMES
 from firestore_connector import add_historique_generation, get_dataframe_from_collection 
 
@@ -18,22 +17,22 @@ gemini_api_key = st.secrets.get(GEMINI_API_KEY_NAME)
 
 if gemini_api_key:
     try:
-        print("DEBUG_GEMINI: Clé API Gemini trouvée. Tentative de genai.configure...") # AJOUTE CETTE LIGNE
+        print("DEBUG_GEMINI: Clé API Gemini trouvée. Tentative de genai.configure...") # Debug print
         genai.configure(api_key=gemini_api_key)
-        print("DEBUG_GEMINI: genai.configure a réussi.") # AJOUTE CETTE LIGNE
+        print("DEBUG_GEMINI: genai.configure a réussi.") # Debug print
         _text_model = genai.GenerativeModel('gemini-1.5-pro') 
         _creative_model = genai.GenerativeModel('gemini-1.5-pro') 
         st.session_state['gemini_initialized'] = True
         st.session_state['gemini_error'] = None 
-        print("DEBUG_GEMINI: Modèles Gemini initialisés avec succès.") # AJOUTE CETTE LIGNE
+        print("DEBUG_GEMINI: Modèles Gemini initialisés avec succès.") # Debug print
     except Exception as e:
-        print(f"DEBUG_GEMINI: Échec de genai.configure ou de l'initialisation du modèle: {e}") # AJOUTE CETTE LIGNE
+        print(f"DEBUG_GEMINI: Échec de genai.configure ou de l'initialisation du modèle: {e}") # Debug print
         st.session_state['gemini_initialized'] = False
         st.session_state['gemini_error'] = f"Échec d'initialisation Gemini : {e}. Vérifiez votre clé API dans les secrets Streamlit Cloud."
         _text_model = None
         _creative_model = None
 else:
-    print("DEBUG_GEMINI: Clé API Gemini NON trouvée dans les secrets.") # AJOUTE CETTE LIGNE
+    print("DEBUG_GEMINI: Clé API Gemini NON trouvée dans les secrets.") # Debug print
     st.session_state['gemini_initialized'] = False
     st.session_state['gemini_error'] = f"La clé API Gemini '{GEMINI_API_KEY_NAME}' est manquante dans les secrets de votre application Streamlit Cloud. Veuillez la configurer."
     _text_model = None
@@ -132,7 +131,7 @@ def generate_song_lyrics(
     style_lyrique_desc = styles_lyriques_df[styles_lyriques_df['ID_Style_Lyrique'] == style_lyrique]['Description_Detaillee'].iloc[0] if style_lyrique and not styles_lyriques_df.empty and style_lyrique in styles_lyriques_df['ID_Style_Lyrique'].values else style_lyrique
     theme_desc = themes_df[themes_df['ID_Theme'] == theme_lyrique_principal]['Description_Conceptuelle'].iloc[0] if theme_lyrique_principal and not themes_df.empty and theme_lyrique_principal in themes_df['ID_Theme'].values else theme_lyrique_principal
     mood_desc = moods_df[moods_df['ID_Mood'] == mood_principal]['Description_Nuance'].iloc[0] if mood_principal and not moods_df.empty and mood_principal in moods_df['ID_Mood'].values else mood_principal
-    structure_schema = structures_df[structures_df['ID_Structure'] == structure_chanSONG]['Schema_Detaille'].iloc[0] if structure_chanSONG and not structures_df.empty and structure_chanSONG in structures_df['ID_Structure'].values else structure_chanSONG
+    structure_schema = structures_df[structures_df['ID_Structure'] == structure_chanSONG]['Schema_Detaille'].iloc[0] if structure_chanSONG and not structures_df.empty and structure_chanSONG in structures_df['ID_Structure'].values else structure_schema
     
     prompt = f"""En tant que parolier expert, poétique et sensible, crée des paroles complètes et originales.
     Génère des paroles pour une chanson dans le genre **{genre_musical}**.
@@ -147,7 +146,7 @@ def generate_song_lyrics(
     Respecte scrupuleusement la structure demandée (Intro, Couplet, Refrain, Pont, Outro etc. si applicable). Chaque section doit être clairement identifiée (par exemple, "COUPLET 1:", "REFRAIN:", "PONT:").
     N'incluez pas de notes explicatives sur la structure dans la réponse finale, seulement les paroles.
     """
-    return _generate_content(_creative_model, prompt, type_generation="Paroles de Chanson", temperature=0.8, max_output_tokens=2000)
+    return _generate_content(_creative_model, prompt, type_generation="Paroles de Chanson", temperature=0.7, max_output_tokens=2000)
 
 def generate_audio_prompt(
     genre_musical: str, mood_principal: str, duree_estimee: str,
@@ -214,7 +213,7 @@ def generate_album_art_prompt(nom_album: str, genre_dominant_album: str, descrip
     Inclus les mots-clés visuels supplémentaires (si fournis, sinon ignore) : **{mots_cles_visuels_suppl}**.
     Précise le style artistique souhaité (ex: photographie surréaliste, peinture numérique abstraite, illustration cyberpunk 3D, pixel art nostalgique, style expressionniste sombre), la palette de couleurs dominante, la composition (gros plan, plan large), et l'éclairage. Inclue des ratios d'image si pertinents (ex: --ar 1:1 pour Midjourney).
     """
-    return _generate_content(_creative_model, prompt, type_generation="Prompt Pochette Album", temperature=0.8, max_output_tokens=1000)
+    return _generate_content(_creative_model, prompt, type_generation="Prompt Pochette Album", temperature=0.7, max_output_tokens=1000) # Temperature ajustée
 
 def simulate_streaming_stats(morceau_ids: list, num_months: int) -> pd.DataFrame:
     """Simule des statistiques d'écoute pour un ou plusieurs morceaux et les ajoute à la base de données."""
@@ -340,7 +339,7 @@ def generate_complex_harmonic_structure(genre_musical: str, mood_principal: str,
     Suggère une idée de contre-mélodie harmonique ou de ligne de basse non triviale pour 4 mesures, en notation simplifiée (ex: "Basse: arpèges ascendants sur le V7alt, puis descente chromatique vers le I").
     Présente le tout de manière structurée et explicative, avec des commentaires sur l'effet désiré de chaque section harmonique.
     """
-    return _generate_content(_creative_model, prompt, type_generation="Structure Harmonique Complexe", temperature=0.9, max_output_tokens=1500)
+    return _generate_content(_creative_model, prompt, type_generation="Structure Harmonique Complexe", temperature=0.8, max_output_tokens=1500) # Temperature ajustée
 
 def copilot_creative_suggestion(current_input: str, context: str, type_suggestion: str = "suite_lyrique") -> str:
     """
@@ -360,7 +359,7 @@ def copilot_creative_suggestion(current_input: str, context: str, type_suggestio
     else:
         return "Type de suggestion non pris en charge."
     
-    return _generate_content(_creative_model, prompt, type_generation=f"Copilote - {type_suggestion}", temperature=0.9, max_output_tokens=300)
+    return _generate_content(_creative_model, prompt, type_generation=f"Copilote - {type_suggestion}", temperature=0.8, max_output_tokens=300) # Temperature ajustée
 
 def analyze_and_suggest_personal_style(user_feedback_history_df: pd.DataFrame) -> str:
     """
@@ -411,8 +410,7 @@ def analyze_and_suggest_personal_style(user_feedback_history_df: pd.DataFrame) -
     """
     return _generate_content(_creative_model, prompt, type_generation="Agent de Style - Suggestion Personnalisée", temperature=0.9, max_output_tokens=500)
 
-
-def generate_multimodal_content_prompts(
+    def generate_multimodal_content_prompts(
     main_theme: str, main_genre: str, main_mood: str,
     longueur_morceau: str, artiste_ia_name: str
 ) -> dict:
@@ -424,9 +422,9 @@ def generate_multimodal_content_prompts(
     mood_desc = moods_df[moods_df['ID_Mood'] == main_mood]['Description_Nuance'].iloc[0] if main_mood and not moods_df.empty and main_mood in moods_df['ID_Mood'].values else main_mood
 
     prompt = f"""En tant qu'Architecte Multimodal ultime, ton objectif est de générer trois prompts distincts mais parfaitement cohérents et synchronisés pour une création artistique complète :
-    1.  **Prompt pour Paroles de Chanson** (pour un parolier humain ou une IA de texte)
-    2.  **Prompt pour Génération Audio** (optimisé pour un outil comme SUNO ou autre générateur de musique AI)
-    3.  **Prompt pour Génération d'Image** (optimisé pour un outil comme Midjourney/DALL-E, pour la pochette d'album ou une image d'accompagnement)
+    1.   **PROMPT_PAROLES:** (pour un parolier humain ou une IA de texte)
+    2.   **PROMPT_AUDIO_SUNO:** (optimisé pour un outil comme SUNO ou autre générateur de musique AI)
+    3.   **PROMPT_IMAGE_COVER:** (optimisé pour un outil comme Midjourney/DALL-E, pour la pochette d'album ou une image d'accompagnement)
 
     Le cœur de la création est :
     -   **Thème Principal : {main_theme}**
@@ -438,19 +436,21 @@ def generate_multimodal_content_prompts(
     Pour chaque prompt, sois extrêmement précis, créatif et descriptif. Utilise des termes évocateurs et assure-toi que le langage, les images, les sonorités et les concepts visuels se renforcent mutuellement pour créer une œuvre cohérente et immersive.
 
     ---
-    **Prompt #1: Paroles de Chanson**
+    **PROMPT_PAROLES:**
     [Détails pour les paroles: style lyrique, mots-clés spécifiques, imagerie textuelle, ton émotionnel, structure souhaitée (ex: Intro, Couplet, Refrain, Pont, Outro). Donne un exemple d'une phrase d'accroche.]
 
     ---
-    **Prompt #2: Génération Audio (SUNO)**
+    **PROMPT_AUDIO_SUNO:**
     [Détails pour l'audio: Format SUNO strict: Genre | Mood | Instrumentation clé | Ambiance sonore | Effets de production | Détails vocaux (type, style, caractère) | Structure du morceau. Ajoute des spécificités comme le tempo (BPM) ou des textures sonores (ex: "vinyle crackle").]
 
     ---
-    **Prompt #3: Image pour Pochette d'Album**
+    **PROMPT_IMAGE_COVER:**
     [Détails pour l'image: Style artistique (ex: art numérique, photographie surréaliste, illustration rétro-futuriste), palette de couleurs dominante, composition (gros plan, plan large, perspective), éclairage, éléments clés visuels spécifiques, et des ratios d'image (ex: --ar 1:1 pour une pochette carrée, --ar 16:9 pour un visuel de clip). L'image doit capturer l'essence du thème et du mood.]
     """
 
-    response_text = _generate_content(_creative_model, prompt, type_generation="Création Multimodale Synchronisée", temperature=0.9, max_output_tokens=3000)
+    response_text = _generate_content(_creative_model, prompt, type_generation="Création Multimodale Synchronisée", temperature=1.0, max_output_tokens=3000)
+    
+    print(f"DEBUG_MULTIMODAL: Réponse brute de l'IA: \n{response_text}\n--- FIN REPONSE BRUTE ---") # Debug print
 
     prompts_dict = {
         "paroles_prompt": "Prompt des paroles non trouvé. Vérifiez le format de la réponse de l'IA.",
@@ -460,12 +460,12 @@ def generate_multimodal_content_prompts(
     
     parts = response_text.split("---")
     for i, part in enumerate(parts):
-        if "Prompt #1: Paroles de Chanson" in part:
-            prompts_dict["paroles_prompt"] = part.replace("Prompt #1: Paroles de Chanson", "").strip()
-        elif "Prompt #2: Génération Audio (SUNO)" in part:
-            prompts_dict["audio_suno_prompt"] = part.replace("Prompt #2: Génération Audio (SUNO)", "").strip()
-        elif "Prompt #3: Image pour Pochette d'Album" in part:
-            prompts_dict["image_prompt"] = part.replace("Prompt #3: Image pour Pochette d'Album", "").strip()
+        if "PROMPT_PAROLES:" in part: 
+            prompts_dict["paroles_prompt"] = part.replace("PROMPT_PAROLES:", "").strip()
+        elif "PROMPT_AUDIO_SUNO:" in part: 
+            prompts_dict["audio_suno_prompt"] = part.replace("PROMPT_AUDIO_SUNO:", "").strip()
+        elif "PROMPT_IMAGE_COVER:" in part: 
+            prompts_dict["image_prompt"] = part.replace("PROMPT_IMAGE_COVER:", "").strip()
 
     return prompts_dict
 
