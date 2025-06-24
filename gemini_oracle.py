@@ -18,17 +18,22 @@ gemini_api_key = st.secrets.get(GEMINI_API_KEY_NAME)
 
 if gemini_api_key:
     try:
+        print("DEBUG_GEMINI: Clé API Gemini trouvée. Tentative de genai.configure...") # AJOUTE CETTE LIGNE
         genai.configure(api_key=gemini_api_key)
+        print("DEBUG_GEMINI: genai.configure a réussi.") # AJOUTE CETTE LIGNE
         _text_model = genai.GenerativeModel('gemini-1.5-pro') 
         _creative_model = genai.GenerativeModel('gemini-1.5-pro') 
         st.session_state['gemini_initialized'] = True
         st.session_state['gemini_error'] = None 
+        print("DEBUG_GEMINI: Modèles Gemini initialisés avec succès.") # AJOUTE CETTE LIGNE
     except Exception as e:
+        print(f"DEBUG_GEMINI: Échec de genai.configure ou de l'initialisation du modèle: {e}") # AJOUTE CETTE LIGNE
         st.session_state['gemini_initialized'] = False
         st.session_state['gemini_error'] = f"Échec d'initialisation Gemini : {e}. Vérifiez votre clé API dans les secrets Streamlit Cloud."
         _text_model = None
         _creative_model = None
 else:
+    print("DEBUG_GEMINI: Clé API Gemini NON trouvée dans les secrets.") # AJOUTE CETTE LIGNE
     st.session_state['gemini_initialized'] = False
     st.session_state['gemini_error'] = f"La clé API Gemini '{GEMINI_API_KEY_NAME}' est manquante dans les secrets de votre application Streamlit Cloud. Veuillez la configurer."
     _text_model = None
