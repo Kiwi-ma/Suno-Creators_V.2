@@ -469,7 +469,10 @@ def analyze_and_suggest_personal_style(user_feedback_history_df: pd.DataFrame) -
 
     return prompts_dict
 
+# gemini_oracle.py (autour de la ligne 413)
+
 def analyze_viral_potential_and_niche_recommendations(morceau_data: dict, public_cible_id: str, current_trends: str) -> str:
+    # ATTENTION : Chaque ligne ci-dessous (y compris la docstring) doit avoir exactement 4 espaces d'indentation par rapport au 'def'
     """
     Analyse le potentiel viral d'un morceau et recommande des niches de marché.
     C'est l'implémentation de la Détection de Potentiel Viral.
