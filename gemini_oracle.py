@@ -26,8 +26,8 @@ if gemini_api_key:
         print("DEBUG_GEMINI: Clé API Gemini trouvée. Tentative de genai.configure...")
         genai.configure(api_key=gemini_api_key)
         print("DEBUG_GEMINI: genai.configure a réussi.")
-        _text_model = genai.GenerativeModel('gemini-2.5-pro') 
-        _creative_model = genai.GenerativeModel('gemini-2.5-pro') 
+        _text_model = genai.GenerativeModel('gemini-2.5-flash') 
+        _creative_model = genai.GenerativeModel('gemini-2.5-flash') 
         st.session_state['gemini_initialized'] = True
         st.session_state['gemini_error'] = None 
         print("DEBUG_GEMINI: Modèles Gemini initialisés avec succès.")
