@@ -11,6 +11,9 @@ import json
 # Importation pour la logique de réessai
 from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
+# AJOUTE CETTE LIGNE : Importation des exceptions spécifiques de Google API Core
+from google.api_core import exceptions as google_exceptions 
+
 # Importation des configurations et du connecteur Firestore
 from config import GEMINI_API_KEY_NAME, WORKSHEET_NAMES
 from firestore_connector import add_historique_generation, get_dataframe_from_collection 
@@ -69,10 +72,10 @@ def _log_gemini_interaction(type_generation: str, prompt_sent: str, response_rec
 @retry(wait=wait_exponential(multiplier=1, min=4, max=10), # Délais entre réessais: 4s, 8s, 16s...
        stop=stop_after_attempt(3), # Tenter jusqu'à 3 fois
        # Réessayer si l'exception est de l'un de ces types:
-       retry=retry_if_exception_type((genai.types.StopCandidateException, # Peut indiquer une réponse incomplète, parfois transitoire
-                                      google.api_core.exceptions.InternalServerError, # Erreur serveur 5xx
-                                      google.api_core.exceptions.ServiceUnavailable, # Service non dispo 5xx
-                                      google.api_core.exceptions.ResourceExhausted))) # Erreur de quota (même si facturation, pour des pointes)
+       retry=retry_if_exception_type((genai.types.StopCandidateException,
+                                      google_exceptions.InternalServerError, # MODIFIÉ ICI
+                                      google_exceptions.ServiceUnavailable, # MODIFIÉ ICI
+                                      google_exceptions.ResourceExhausted))) # MODIFIÉ ICI
 
 def _generate_content(model, prompt: str, type_generation: str = "Contenu Général", associated_id: str = "", temperature: float = 0.1, max_output_tokens: int = 1024) -> str:
     """
